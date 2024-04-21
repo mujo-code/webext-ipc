@@ -97,7 +97,7 @@ export class WebExtIPC<
   /**
    * getMessageCache retrieves the response of a message from the cache.
    */
-  private getMessageCache<Key extends keyof Config>(
+  public getMessageCache<Key extends keyof Config>(
     message: Config[Key]['message']
   ) {
     const memoizedMessage = this.getMemoizedMessage(message)
