@@ -11,7 +11,7 @@ export type MessageResolvers<Config extends MessagesConfig<string[]>> = {
   [Key in keyof Config]?: (
     message: Config[Key]['message'],
     sender: Runtime.MessageSender
-  ) => Promise<Config[Key]['response']>
+  ) => Config[Key]['response'] | Promise<Config[Key]['response']>
 }
 
 export type ErrorResponseMessage = {

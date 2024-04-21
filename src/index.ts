@@ -111,7 +111,11 @@ export class WebExtIPC<
    * handlers to be bound in one call.
    */
   addMessageResolvers(resolvers: MessageResolvers<Config>) {
-    const handler = async (message: any, sender: Runtime.MessageSender) => {
+    const handler = async (
+      message: any,
+      sender: Runtime.MessageSender,
+      sendResponse: (response: any) => void
+    ) => {
       if (
         !message ||
         typeof message !== 'object' ||
@@ -123,17 +127,22 @@ export class WebExtIPC<
 
       try {
         // @ts-expect-error this message type can still be something other then keyof Config
-        return resolvers[message.type]?.(message, sender)
+        const response = resolvers[message.type]?.(message, sender)
+        if (response instanceof Promise) {
+          sendResponse(await response)
+        } else {
+          sendResponse(response)
+        }
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'An error occurred'
         const stack = error instanceof Error ? error.stack : undefined
 
-        return {
+        sendResponse({
           type: 'error',
           message,
           stack,
-        }
+        })
       }
     }
     browser.runtime.onMessage.addListener(handler)
