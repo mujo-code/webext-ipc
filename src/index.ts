@@ -1,4 +1,4 @@
-import browser from 'webextension-polyfill'
+import browser, { Runtime } from 'webextension-polyfill'
 import { ErrorResponseMessage, MessageResolvers, MessagesConfig } from './types'
 import { shallowEqual } from './shallow'
 
@@ -111,7 +111,7 @@ export class WebExtIPC<
    * handlers to be bound in one call.
    */
   addMessageResolvers(resolvers: MessageResolvers<Config>) {
-    browser.runtime.onMessage.addListener(async (message, sender) => {
+    const handler = async (message: any, sender: Runtime.MessageSender) => {
       if (
         !message ||
         typeof message !== 'object' ||
@@ -135,7 +135,12 @@ export class WebExtIPC<
           stack,
         }
       }
-    })
+    }
+    browser.runtime.onMessage.addListener(handler)
+
+    return () => {
+      browser.runtime.onMessage.removeListener(handler)
+    }
   }
 
   /**
