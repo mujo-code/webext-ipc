@@ -9,14 +9,20 @@ jest.mock('webextension-polyfill', () => ({
       removeEventListener: jest.fn(),
     },
   },
+
+  tabs: {
+    sendMessage: jest.fn(),
+  },
 }))
 
 describe('webext-ipc', () => {
   let sendMessageMock: jest.Mock
   let addListenerMock: jest.Mock
+  let tabSendMessageMock: jest.Mock
   beforeEach(() => {
     sendMessageMock = browser.runtime.sendMessage as jest.Mock
     addListenerMock = browser.runtime.onMessage.addListener as jest.Mock
+    tabSendMessageMock = browser.tabs.sendMessage as jest.Mock
     jest.clearAllMocks()
   })
 
@@ -126,15 +132,10 @@ describe('webext-ipc', () => {
       }
     )
 
-    expect(sendMessageMock).toHaveBeenCalledWith(
-      {
-        type: 'testResponse',
-        message: 'hello',
-      },
-      {
-        tabId: 1,
-      }
-    )
+    expect(tabSendMessageMock).toHaveBeenCalledWith(1, {
+      type: 'testResponse',
+      message: 'hello',
+    })
   })
 
   it('should allow for creating resolver like methods to handle messages', async () => {
@@ -156,7 +157,13 @@ describe('webext-ipc', () => {
 
     const message = { type: 'test', message: 'hello' }
     const sender = { tab: { id: 1 } }
-    await addListenerMock.mock.calls[0][0](message, sender)
+    const mockSendResponse = jest.fn()
+    await addListenerMock.mock.calls[0][0](message, sender, mockSendResponse)
+
+    expect(await mockSendResponse).toHaveBeenCalledWith({
+      type: 'testResponse',
+      message: 'hello',
+    })
   })
 
   it('should return an error if the resolver throws an error', async () => {
@@ -167,17 +174,19 @@ describe('webext-ipc', () => {
       }
     }>()
 
-    const resolver = jest.fn().mockImplementation(() => {
-      throw new Error('test')
-    })
-
     ipc.addMessageResolvers({
-      test: () => resolver(),
+      test: () => {
+        throw new Error('test')
+      },
     })
 
     const message = { type: 'test', message: 'hello' }
     const sender = { tab: { id: 1 } }
-    expect(addListenerMock.mock.calls[0][0](message, sender)).resolves.toEqual(
+    const mockSendResponse = jest.fn()
+
+    await addListenerMock.mock.calls[0][0](message, sender, mockSendResponse)
+
+    expect(await mockSendResponse).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'error',
         message: 'test',

@@ -40,10 +40,11 @@ export class WebExtIPC<
     } & Config[Key]['message'],
     {
       staleTime: overrideStaleTime,
-      ...otherOptions
+      tabId,
     }: {
       staleTime?: number
-    } & browser.Runtime.SendMessageOptionsType = {}
+      tabId?: number
+    } = {}
   ): Promise<Config[Key]['response']> {
     const staleTime = overrideStaleTime ?? this.globalStaleTime
     const cache = this.getMessageCache(message)
@@ -52,7 +53,14 @@ export class WebExtIPC<
       return cache.data
     }
 
-    const resp = (await browser.runtime.sendMessage(message, otherOptions)) as
+    let pendingResponse: Promise<any>
+    if (tabId) {
+      pendingResponse = browser.tabs.sendMessage(tabId, { ...message })
+    } else {
+      pendingResponse = browser.runtime.sendMessage({ ...message })
+    }
+
+    const resp = (await pendingResponse) as
       | Config[Key]['response']
       | ErrorResponseMessage
 
@@ -74,9 +82,12 @@ export class WebExtIPC<
       // @ts-expect-error there is issue with this just because of keyof has some additional types
       type: `${Key}Response`
     } & Config[Key]['response'],
-    options: browser.Runtime.SendMessageOptionsType = {}
+    { tabId }: { tabId?: number } = {}
   ) {
-    return browser.runtime.sendMessage({ ...message }, options)
+    if (tabId) {
+      return browser.tabs.sendMessage(tabId, { ...message })
+    }
+    return browser.runtime.sendMessage({ ...message })
   }
 
   /**
@@ -111,7 +122,7 @@ export class WebExtIPC<
    * handlers to be bound in one call.
    */
   addMessageResolvers(resolvers: MessageResolvers<Config>) {
-    const handler = async (
+    const handler = (
       message: any,
       sender: Runtime.MessageSender,
       sendResponse: (response: any) => void
@@ -125,15 +136,7 @@ export class WebExtIPC<
         return
       }
 
-      try {
-        // @ts-expect-error this message type can still be something other then keyof Config
-        const response = resolvers[message.type]?.(message, sender)
-        if (response instanceof Promise) {
-          sendResponse(await response)
-        } else {
-          sendResponse(response)
-        }
-      } catch (error) {
+      const sendError = (error: unknown) => {
         const message =
           error instanceof Error ? error.message : 'An error occurred'
         const stack = error instanceof Error ? error.stack : undefined
@@ -144,9 +147,24 @@ export class WebExtIPC<
           stack,
         })
       }
-    }
-    browser.runtime.onMessage.addListener(handler)
 
+      let response: any
+      try {
+        // @ts-expect-error this message type can still be something other then keyof Config
+        response = resolvers[message.type]?.(message, sender)
+      } catch (e) {
+        sendError(e)
+        return
+      }
+      if (response && 'then' in response) {
+        response.then(sendResponse).catch(sendError)
+        return true
+      } else if (response) {
+        sendResponse(response)
+      }
+    }
+
+    browser.runtime.onMessage.addListener(handler)
     return () => {
       browser.runtime.onMessage.removeListener(handler)
     }
@@ -174,18 +192,3 @@ export class WebExtIPC<
     return new WebExtIPC<(keyof Config)[], Config>(options)
   }
 }
-
-const ipc = WebExtIPC.from<{
-  ping: {
-    message: { type: 'ping' }
-    response: { type: 'pingResponse'; pong: boolean }
-  }
-}>({
-  staleTime: 1000,
-})
-
-ipc.addMessageResolvers({
-  ping: async (message) => {
-    return { type: 'pingResponse', pong: true }
-  },
-})
