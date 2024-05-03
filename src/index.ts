@@ -33,6 +33,11 @@ export class WebExtIPC<
    * sendMessage is a wrapper around browser.runtime.sendMessage that
    * memoizes the response of the message. If the message has already been
    * sent, it will return the memoized response.
+   *
+   * Sending a message will cache the response of the message. If you want to
+   * avoid caching the response, you can pass in the noCache option.
+   * You may also control the time cache is considered stale by passing in the
+   * staleTime option.
    */
   async sendMessage<Key extends keyof Config>(
     message: {
@@ -41,16 +46,20 @@ export class WebExtIPC<
     {
       staleTime: overrideStaleTime,
       tabId,
+      noCache,
     }: {
       staleTime?: number
       tabId?: number
+      noCache?: boolean
     } = {}
   ): Promise<Config[Key]['response']> {
-    const staleTime = overrideStaleTime ?? this.globalStaleTime
-    const cache = this.getMessageCache(message)
+    if (!noCache) {
+      const staleTime = overrideStaleTime ?? this.globalStaleTime
+      const cache = this.getMessageCache(message)
 
-    if (cache && Date.now() - cache.timestamp < staleTime) {
-      return cache.data
+      if (cache && Date.now() - cache.timestamp < staleTime) {
+        return cache.data
+      }
     }
 
     let pendingResponse: Promise<any>
@@ -68,7 +77,9 @@ export class WebExtIPC<
       return Promise.reject(resp)
     }
 
-    this.messageCache.set(message, { data: resp, timestamp: Date.now() })
+    if (!noCache) {
+      this.messageCache.set(message, { data: resp, timestamp: Date.now() })
+    }
     return resp
   }
 

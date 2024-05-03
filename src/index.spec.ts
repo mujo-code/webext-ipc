@@ -114,6 +114,38 @@ describe('webext-ipc', () => {
     expect(result2).toEqual({ type: 'testResponse', message: 'hello' })
   })
 
+  it("should allow for avoiding cache when 'noCache' is set to true", async () => {
+    const ipc = WebExtIPC.from<{
+      test: {
+        message: { type: 'test'; message: string }
+        response: { type: 'testResponse'; message: string }
+      }
+    }>({ staleTime: 1000 })
+
+    sendMessageMock.mockResolvedValue({
+      type: 'testResponse',
+      message: 'hello',
+    })
+
+    const result = await ipc.sendMessage(
+      { type: 'test', message: 'hello' },
+      { noCache: true }
+    )
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1)
+
+    expect(result).toEqual({ type: 'testResponse', message: 'hello' })
+
+    const result2 = await ipc.sendMessage(
+      { type: 'test', message: 'hello' },
+      { noCache: true }
+    )
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(2)
+
+    expect(result2).toEqual({ type: 'testResponse', message: 'hello' })
+  })
+
   it('should allow for sending a response', async () => {
     const ipc = WebExtIPC.from<{
       test: {
